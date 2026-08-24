@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Titan Arch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="sidebar">
+    <header>
+      <h1>Titan&nbsp;Arch</h1>
+      <p class="tag">Find the junctions a city can't live without.</p>
+    </header>
+
+    <div class="block">
+      <div class="block-label">Load a city</div>
+      <div class="loader">
+        <input id="placeInput" type="text" placeholder="e.g. Indiranagar, Bengaluru" />
+        <button id="loadBtn" class="btn primary">Load</button>
+      </div>
+      <div class="loader-row">
+        <label>radius
+          <select id="radiusSel">
+            <option value="700">700 m</option>
+            <option value="1100" selected>1.1 km</option>
+            <option value="1600">1.6 km</option>
+            <option value="2200">2.2 km</option>
+          </select>
+        </label>
+        <button id="demoBtn" class="btn ghost small">use demo map</button>
+      </div>
+      <label class="demand-toggle"><input type="checkbox" id="demandChk" checked />
+        weight by population &amp; key places (real demand)</label>
+      <button id="reconBtn" class="btn ghost small" style="width:100%;margin-top:9px">
+        ▶ Reconstruction demo (satellite mask → healed roads)</button>
+      <details class="upload-mask">
+        <summary>upload your own road mask (from Colab)</summary>
+        <input type="file" id="maskFile" accept=".tif,.tiff,image/*" />
+        <p class="sc-note" style="margin:4px 0">GeoTIFF (LISS-IV / Cartosat / Sentinel-2):
+          bounds read automatically. Plain PNG: fill the box below.</p>
+        <div class="bbox-grid">
+          <input id="bbS" placeholder="South lat" />
+          <input id="bbW" placeholder="West lon" />
+          <input id="bbN" placeholder="North lat" />
+          <input id="bbE" placeholder="East lon" />
+        </div>
+        <button id="maskBtn" class="btn primary small" style="width:100%">Reconstruct from mask</button>
+      </details>
+    </div>
+
+    <div class="block recon hidden" id="reconBlock">
+      <div class="block-label">Road reconstruction</div>
+      <p class="sim-help">From a broken road mask (trees/shadows hiding roads),
+        Titan Arch reconnects road-ends that point at each other.</p>
+      <div id="reconStats" class="recon-stats"></div>
+      <label class="recon-toggle"><input type="checkbox" id="showHealed" checked />
+        show the <b style="color:#5ad19a">healed</b> links</label>
+      <button id="healReplayBtn" class="btn primary small" style="width:100%;margin-top:9px">
+        ▶ Replay healing (with confidence)</button>
+      <div id="healConf" class="heal-conf hidden"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-label">Network <span id="weightTag" class="weight-tag hidden">⚖ population-weighted</span></div>
+      <div id="metaName" class="meta-name">—</div>
+      <div class="stats">
+        <span class="stat"><b id="nNodes">—</b> junctions</span>
+        <span class="stat"><b id="nEdges">—</b> roads</span>
+      </div>
+    </div>
+
+    <div class="block resilience">
+      <div class="block-label">Resilience Index</div>
+      <div class="ri-row">
+        <div id="riValue" class="ri-value">—</div>
+        <div id="riLabel" class="ri-label"></div>
+      </div>
+      <div class="ri-help">Network efficiency left after the most critical
+        junctions are knocked out. Lower = more fragile.</div>
+      <div class="ri-apl">path-length R (per spec): <b id="riApl">—</b>
+        <span class="hint">baseline ÷ perturbed avg. shortest path</span></div>
+      <svg id="stressChart" class="stress-chart" viewBox="0 0 280 70" preserveAspectRatio="none"></svg>
+      <div class="stress-caption" id="stressCaption">city efficiency as gatekeepers fail →</div>
+      <button id="cascadeBtn" class="btn primary" style="width:100%;margin-top:10px">▶ Animate stress test (live curve)</button>
+      <div id="cascadeReadout" class="cascade-readout hidden"></div>
+    </div>
+
+    <div class="block flow">
+      <div class="block-label">Live traffic flow <span class="hint">(betweenness)</span></div>
+      <p class="sim-help">Particles stream along the roads — the busier the corridor,
+        the more it carries. They crowd onto the gatekeepers. Fail a junction and
+        watch its traffic vanish and pile elsewhere.</p>
+      <button id="flowBtn" class="btn primary" style="width:100%">▶ Show live traffic flow</button>
+      <div class="wave-legend" style="margin-top:8px">
+        <span><i style="background:#3a4250"></i>quiet</span>
+        <span><i style="background:#e8d24a"></i>busy</span>
+        <span><i style="background:#ff5a5a"></i>gatekeeper corridor</span>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-label">Top gatekeepers <span class="hint">(click to inspect)</span></div>
+      <ol id="gkList" class="gk-list"></ol>
+    </div>
+
+    <div class="block repair">
+      <div class="block-label">Repair recommender</div>
+      <p class="sim-help">Find the single new road link that would make the city
+        most resilient.</p>
+      <button id="repairBtn" class="btn primary" style="width:100%">Suggest the best fix</button>
+      <div id="repairResult" class="repair-result hidden"></div>
+    </div>
+
+    <div class="block emergency hidden" id="emergencyBlock">
+      <div class="block-label">Emergency access <span class="hint">(hospitals &amp; fire)</span></div>
+      <div class="em-head">
+        <div><span id="emFacilities" class="em-big">—</span> facilities</div>
+        <div><span id="emServed" class="em-big">—</span> of people within reach of care</div>
+      </div>
+      <p class="sim-help" style="margin:8px 0 4px">Junctions most people depend on to
+        reach care (lose these and care is cut off):</p>
+      <ol id="emList" class="gk-list"></ol>
+    </div>
+
+    <div class="block congestion hidden" id="congBlock">
+      <div class="block-label">Traffic congestion <span class="hint">(capacity model)</span></div>
+      <p class="sim-help"><b id="congOverload">—</b> of road-km runs over capacity at peak.
+        Turn on the heatmap, then fail a junction to watch traffic pile up.</p>
+      <label class="demand-toggle"><input type="checkbox" id="congToggle" />
+        show congestion heatmap (green = free, red = jammed)</label>
+      <div id="congStat" class="flood-stats" style="margin-top:8px"></div>
+      <div class="wave-legend">
+        <span><i style="background:#2ecc71"></i>free</span>
+        <span><i style="background:#e8d24a"></i>busy</span>
+        <span><i style="background:#e2574c"></i>over capacity</span>
+      </div>
+    </div>
+
+    <div class="block wave hidden" id="waveBlock">
+      <div class="block-label">Access wavefront <span class="hint">(travel-time ripple)</span></div>
+      <p class="sim-help">Travel time spreads from <b id="waveSrc">a hospital</b> across the
+        city. Toggle a failure and replay to watch access shrink.</p>
+      <label class="demand-toggle"><input type="checkbox" id="waveFail" />
+        simulate the #1 gatekeeper failing</label>
+      <button id="waveBtn" class="btn primary" style="width:100%;margin-top:8px">▶ Play access wave</button>
+      <div id="waveStat" class="flood-stats" style="margin-top:8px"></div>
+      <div class="wave-legend">
+        <span><i style="background:#2ecc71"></i>&lt;3 min</span>
+        <span><i style="background:#e8d24a"></i>~8 min</span>
+        <span><i style="background:#e8a14a"></i>~12 min</span>
+        <span><i style="background:#e2574c"></i>15 min+</span>
+      </div>
+    </div>
+
+    <div class="block flood" id="floodBlock">
+      <div class="block-label">Flood scenario <span class="hint">(terrain-based)</span></div>
+      <p class="sim-help">Raise the water level — low-lying junctions fail
+        together. See how much of the city stays connected.</p>
+      <button id="floodPrepBtn" class="btn primary" style="width:100%">Prepare flood model</button>
+      <div id="floodCtl" class="flood-ctl hidden">
+        <input type="range" id="floodSlider" min="0" max="100" value="0" />
+        <div class="flood-depth">water&nbsp;<b id="floodDepth">0.0</b>&nbsp;m above lowest point</div>
+        <div id="floodStats" class="flood-stats"></div>
+        <svg id="floodChart" class="stress-chart" viewBox="0 0 280 70" preserveAspectRatio="none"></svg>
+        <div class="stress-caption">travel-demand still connected vs flood depth →</div>
+      </div>
+    </div>
+
+    <div class="block sim">
+      <div class="block-label">Failure simulation</div>
+      <p class="sim-help" id="simHelp">Click any junction on the map to close it
+        and watch the city re-route.</p>
+      <div id="simResult" class="sim-result hidden"></div>
+      <button id="resetBtn" class="btn ghost hidden">Reopen all junctions</button>
+    </div>
+
+    <footer>
+      <span class="legend"><i class="sw low"></i>low</span>
+      <span class="legend"><i class="sw mid"></i>medium</span>
+      <span class="legend"><i class="sw high"></i>critical</span>
+    </footer>
+  </div>
+
+  <div id="map"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
