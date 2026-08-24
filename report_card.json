@@ -1,0 +1,26 @@
+{
+  "bbox": [
+    12.965206499425081,
+    77.63217062793743,
+    12.981376100574918,
+    77.64876377206258
+  ],
+  "pixel": {
+    "IoU": 0.9383604695958961,
+    "Dice": 0.9682001715517061,
+    "Precision": 0.996661928759099,
+    "Recall": 0.941318851191929,
+    "F1": 0.9682001715517061,
+    "Relaxed_IoU_3px": 0.997161725838058
+  },
+  "graph": {
+    "pred_nodes": 12091,
+    "osm_nodes": 911,
+    "components_before": 47,
+    "components_after": 5,
+    "bridges_added": 162,
+    "Connectivity_Ratio_pct": 4.0524228315226765,
+    "Topological_APL_error_pct": 11.425110108408035,
+    "topo_pairs": 150
+  }
+}
