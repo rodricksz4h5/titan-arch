@@ -18,6 +18,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Local run output
 *.log
